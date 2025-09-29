@@ -109,6 +109,62 @@ const SimpleMessageFormatter = memo(function SimpleMessageFormatter({ content }:
           }}>
             {children}
           </blockquote>
+        ),
+        // Tables
+        table: ({ children }) => (
+          <div style={{
+            overflowX: 'auto',
+            margin: '16px 0',
+            borderRadius: '8px',
+            border: '1px solid #565869'
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: '14px',
+              fontFamily: '"Segoe UI", -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Roboto, Ubuntu, sans-serif'
+            }}>
+              {children}
+            </table>
+          </div>
+        ),
+        thead: ({ children }) => (
+          <thead style={{
+            backgroundColor: 'rgba(110, 118, 129, 0.1)',
+            borderBottom: '2px solid #565869'
+          }}>
+            {children}
+          </thead>
+        ),
+        tbody: ({ children }) => (
+          <tbody>{children}</tbody>
+        ),
+        tr: ({ children }) => (
+          <tr style={{
+            borderBottom: '1px solid rgba(110, 118, 129, 0.3)'
+          }}>
+            {children}
+          </tr>
+        ),
+        th: ({ children, style, ...props }) => (
+          <th style={{
+            padding: '12px 16px',
+            textAlign: 'left',
+            fontWeight: 600,
+            color: '#ffffff',
+            ...style
+          }} {...props}>
+            {children}
+          </th>
+        ),
+        td: ({ children, style, ...props }) => (
+          <td style={{
+            padding: '12px 16px',
+            color: '#ececf1',
+            ...style
+          }} {...props}>
+            {children}
+          </td>
         )
       }}
     >

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { ollamaService } from './services/ollamaService'
 import SimpleMessageFormatter from './components/SimpleMessageFormatter'
+import MemoryService from './services/memoryService'
 
 interface Message {
   id: string
@@ -15,9 +16,37 @@ export default function ModernChatbot() {
   const [isLoading, setIsLoading] = useState(false)
   const [showScrollArrow, setShowScrollArrow] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const memoryService = useRef(new MemoryService({
+    maxSessionMessages: 50,
+    maxStoredConversations: 30,
+    autoSave: true
+  }))
 
+
+  // Load session memory on mount
+  useEffect(() => {
+    const sessionMessages = memoryService.current.loadSessionMemory()
+    if (sessionMessages.length > 0) {
+      setMessages(sessionMessages)
+    }
+  }, [])
+
+  // Save to session storage whenever messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      memoryService.current.saveToSession(messages)
+
+      // Auto-save to long-term storage after each exchange
+      if (messages.length >= 2 && messages[messages.length - 1].role === 'assistant') {
+        if (currentConversationId) {
+          memoryService.current.saveConversation(messages, currentConversationId)
+        }
+      }
+    }
+  }, [messages, currentConversationId])
 
   // Auto-scroll to bottom when new content arrives
   useEffect(() => {
@@ -83,7 +112,9 @@ export default function ModernChatbot() {
     setIsLoading(true)
 
     try {
-      const history = messages.map(msg => ({
+      // Build context with memory - include session context for continuity
+      const contextMessages = memoryService.current.buildContext(messages, true)
+      const history = contextMessages.map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content
       }))
@@ -129,6 +160,13 @@ export default function ModernChatbot() {
     navigator.clipboard.writeText(content)
     setCopiedId(messageId)
     setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const handleScrollToMessage = (messageId: string) => {
+    const messageElement = document.getElementById(`message-${messageId}`)
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
   }
 
   return (
@@ -265,24 +303,70 @@ export default function ModernChatbot() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
+                id={`message-${msg.id}`}
                 className="message-fade-in"
+                style={{
+                  width: '100%'
+                }}
               >
                 <div style={{
                   maxWidth: '768px',
                   margin: '0 auto',
-                  padding: '24px 20px'
+                  padding: '24px 20px',
+                  display: 'flex',
+                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
                 }}>
                   <div style={{
-                    flex: 1,
-                    color: '#ececf1',
-                    fontSize: '16px',
-                    lineHeight: '1.75'
+                    maxWidth: msg.role === 'user' ? '70%' : '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
                   }}>
-                    {msg.role === 'assistant' ? (
-                      <>
-                        <SimpleMessageFormatter content={msg.content} />
+                    {msg.role === 'user' ? (
+                      <div style={{
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                        borderRadius: '20px',
+                        padding: '14px 20px',
+                        boxShadow: '0 4px 24px 0 rgba(31, 38, 135, 0.2)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        position: 'relative',
+                        overflow: 'hidden'
+                      }}>
                         <div style={{
-                          marginTop: '12px',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%)',
+                          pointerEvents: 'none'
+                        }}></div>
+                        <div style={{
+                          lineHeight: '1.5',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          fontSize: '15px',
+                          fontWeight: '400',
+                          color: '#ffffff',
+                          position: 'relative',
+                          zIndex: 1
+                        }}>
+                          {msg.content}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{
+                          color: '#ececf1',
+                          fontSize: '16px',
+                          lineHeight: '1.75'
+                        }}>
+                          <SimpleMessageFormatter content={msg.content} />
+                        </div>
+                        <div style={{
+                          marginTop: '4px',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '8px'
@@ -329,19 +413,39 @@ export default function ModernChatbot() {
                               </>
                             )}
                           </button>
+                          <button
+                            onClick={() => handleScrollToMessage(msg.id)}
+                            style={{
+                              background: 'transparent',
+                              border: '1px solid #565869',
+                              borderRadius: '6px',
+                              padding: '6px 10px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              color: '#c5c5d2',
+                              fontSize: '13px',
+                              transition: 'all 0.2s',
+                              fontFamily: '"Segoe UI", -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Roboto, Ubuntu, sans-serif'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.backgroundColor = '#40414f'
+                              e.currentTarget.style.borderColor = '#40414f'
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.backgroundColor = 'transparent'
+                              e.currentTarget.style.borderColor = '#565869'
+                            }}
+                            title="Scroll to top of message"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="19" x2="12" y2="5"></line>
+                              <polyline points="5 12 12 5 19 12"></polyline>
+                            </svg>
+                          </button>
                         </div>
                       </>
-                    ) : (
-                      <div style={{
-                        lineHeight: '1.75',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        fontSize: '17px',
-                        fontWeight: '500',
-                        color: '#ffffff'
-                      }}>
-                        {msg.content}
-                      </div>
                     )}
                   </div>
                 </div>
